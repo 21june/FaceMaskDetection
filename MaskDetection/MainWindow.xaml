@@ -1,0 +1,34 @@
+﻿<Window x:Class="MaskDetection.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:MaskDetection"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="450" Width="800">
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="0.1*" />
+			<RowDefinition Height="0.9*" />
+		</Grid.RowDefinitions>
+		<Grid Grid.Row="0">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="0.5*" />
+				<ColumnDefinition Width="0.5*" />
+			</Grid.ColumnDefinitions>
+			<Button x:Name="button_image" Grid.Column="0" Content="Image Load" Click="Btn_Click" FontSize="20"/>
+			<Button x:Name="button_cam" Grid.Column="1" Content="Camera Open" Click="Btn_Click" FontSize="20"/>
+
+		</Grid>
+		<Grid Grid.Row="1">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="0.6*" />
+				<ColumnDefinition Width="0.4*" />
+			</Grid.ColumnDefinitions>
+			<Image x:Name="image_cam" Grid.Column="0" Stretch="Uniform"/>
+			<TextBlock x:Name="text_result" Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Center" Margin="10" Text="" FontSize="22"/>
+
+			<Image x:Name="image_face" Grid.Column="1" Stretch="Uniform"/>
+		</Grid>
+	</Grid>
+</Window>
