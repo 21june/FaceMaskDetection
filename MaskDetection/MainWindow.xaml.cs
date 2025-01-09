@@ -56,7 +56,7 @@ namespace MaskDetection
 			m_capture = new VideoCapture();
 
 			// Model Load (ONNX)
-			var modelPath = "resnet18_Mask_12K_EPOCH200_LR0.0001.onnx";
+			var modelPath = "resnet18_Mask_EPOCH300_LR0.001_NormalTrue.onnx";
 			net = OpenCvSharp.Dnn.CvDnn.ReadNetFromOnnx(modelPath);
 			slider_face_conf.Value = (int)(face_confidence * 100);
 			check_facecog.IsChecked = b_facecog = true;
@@ -212,8 +212,8 @@ namespace MaskDetection
 						int height = y2 - y1;
 
 						// 그냥 face recognition 하면, 얼굴이 너무 빡세게 잡혀서.. 좌우상하 20% 정도씩 늘려줌.
-						float face_scale_X = 0f;
-						float face_scale_Y = 0f;
+						float face_scale_X = 0.2f;
+						float face_scale_Y = 0.1f;
 						if (x1 - (width * face_scale_X) < 0)
 							x1 = 0;
 						else
