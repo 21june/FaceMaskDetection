@@ -40,13 +40,13 @@ namespace MaskDetection
 		VideoCapture m_capture;
 		Thread t_cap;
 		bool m_isRunning = false;
-		bool b_fullsize = false;
 		bool b_facecog = true;
 
 		OpenCvSharp.Dnn.Net net;
 		OpenCvSharp.Size resz = new OpenCvSharp.Size(224, 224);
 
 		// Mask_12K First
+		bool meanstd = false;
 		static float[] mean = new float[3] { 0.5703f, 0.4665f, 0.4177f };
 		static float[] std = new float[3] { 0.2429f, 0.2231f, 0.2191f };
 
@@ -55,43 +55,123 @@ namespace MaskDetection
 		public MainWindow()
 		{
 			InitializeComponent();
-			NativeMethods.AllocConsole();
 			m_capture = new VideoCapture();
-
 			string mask_model = "resnet18_Mask_12K_None_EPOCH200_LR0.0001.onnx";
 			net = OpenCvSharp.Dnn.CvDnn.ReadNetFromOnnx(mask_model);
 			if (!net.Empty())	text_model.Text = "Model: " + mask_model;
 			else				text_model.Text = "Model: " + "No Model";
 
 			slider_face_conf.Value = (int)(face_confidence * 100);
-			check_facecog.IsChecked = b_facecog = true;
-			if (check_facecog.IsChecked == true)
-			{
-				check_fullsize.IsEnabled = b_fullsize = false;
-			}
+			check_facedet.IsChecked = b_facecog = true;
 		}
 
 
-		private void Inference(Mat image, bool meanstd, out int label, out double prob)
+		private void ImageROI(Mat image,  out List<OpenCvSharp.Rect> faces)
+		{
+			faces = new List<OpenCvSharp.Rect>();
+
+			if (b_facecog == true)
+			{
+				FaceCrop(image, out faces);
+			}
+			else
+			{
+				OpenCvSharp.Rect rt = new OpenCvSharp.Rect(0, 0, image.Width, image.Height);
+				faces.Add(rt);
+			}
+
+		}
+
+		private void Run(Mat image)
+		{
+			List<OpenCvSharp.Rect> faces;
+			ImageROI(image, out faces);
+
+			int label = 0;
+			double prob = 0.0f;
+			for (int i = 0; i < faces.Count; i++)
+			{
+				OpenCvSharp.Rect bounds = new OpenCvSharp.Rect(0, 0, image.Cols, image.Rows);
+				OpenCvSharp.Rect rt = faces[i] & bounds;
+				Mat roi = new Mat(image, rt).Clone(); // cropped to fit image
+				string str = "";
+				Inference(roi, out label, out prob);
+				if (label == 0)
+				{
+					Cv2.Rectangle(image, rt, Scalar.Blue, 3);
+					Cv2.PutText(image, prob.ToString("0.00"), new OpenCvSharp.Point(rt.X, rt.Y), HersheyFonts.HersheyDuplex, 1.0, Scalar.Black);
+				}
+				else if (label == 1)
+				{
+					Cv2.Rectangle(image, rt, Scalar.Red, 3);
+					Cv2.PutText(image, prob.ToString("0.00"), new OpenCvSharp.Point(rt.X, rt.Y), HersheyFonts.HersheyDuplex, 1.0, Scalar.Black);
+				}
+			}
+
+			image_cam.Dispatcher.Invoke(() =>
+			{
+				image_cam.Source = OpenCvSharp.WpfExtensions.BitmapSourceConverter.ToBitmapSource(image);
+			});
+		}
+		private void Inference(Mat image, out int label, out double prob)
 		{
 			if (net.Empty())
 			{
 				MessageBox.Show("No Found Model!");
-				label = 0;
-				prob = 0;
+				label = -1; prob = 0;
 				return;
 			}
 			if (image.Empty()) {
-				label = 0;
-				prob = 0;
-				MessageBox.Show("No Found Image!");
-				return;
+				label = -1; prob = 0; return;
 			}
 			Mat resizedImage = image.Clone();
-			Cv2.Resize(resizedImage, resizedImage, resz);
 			Mat blob = new Mat();
+			NormalizeImage(ref resizedImage);
+			blob = CvDnn.BlobFromImage(resizedImage, 1.0f,
+				new OpenCvSharp.Size(224, 224), swapRB:true, crop:false);
 
-			Mat[] rgb = resizedImage.Split();
+			net.SetInput(blob);
+			string[] outBlobNames = net.GetUnconnectedOutLayersNames();
+			Mat[] outputBlobs = outBlobNames.Select(toMat => new Mat()).ToArray();
+			Mat matprob = net.Forward("output");
+
+			// Test-Try
+			if (true)
+			{
+				double maxVal, minVal;
+				OpenCvSharp.Point minLoc, maxLoc;
+				Cv2.MinMaxLoc(matprob, out minVal, out maxVal, out minLoc, out maxLoc);
+				label = maxLoc.X;
+				prob = maxVal * 100;
+			}
+			else
+			{
+				float[] data = new float[matprob.Total() * matprob.Channels()];
+				matprob.GetArray(out data);
+				float[] result = Softmax(data);
+				Console.WriteLine(string.Join(", ", result));
+				if (result.Length >= 2)
+				{
+					if (result[0] > result[1])
+					{
+						label = 0; prob = result[0] * 100;
+					}
+					else
+					{
+						label = 0; prob = result[1] * 100;
+					}
+				}
+				else
+				{
+					label = 0; prob = 0;
+				}
+			}
+		}
+
+		private void NormalizeImage(ref Mat img)
+		{
+			img.ConvertTo(img, MatType.CV_32FC3);
+			Mat[] rgb = img.Split();
 			rgb[0] = rgb[0].Divide(255.0f); // B
 			rgb[1] = rgb[1].Divide(255.0f); // G
 			rgb[2] = rgb[2].Divide(255.0f); // R
@@ -105,43 +185,8 @@ namespace MaskDetection
 				rgb[1] = rgb[1].Divide(std[1]); // G
 				rgb[0] = rgb[0].Divide(std[2]); // R
 			}
-			Cv2.Merge(rgb, resizedImage);
-
-			blob = CvDnn.BlobFromImage(resizedImage, 1.0f,
-				new OpenCvSharp.Size(224, 224), swapRB:true, crop:false);
-
-			net.SetInput(blob);
-			string[] outBlobNames = net.GetUnconnectedOutLayersNames();
-			Mat[] outputBlobs = outBlobNames.Select(toMat => new Mat()).ToArray();
-			Mat matprob = net.Forward("output");
-
-			// Test
-			/*
-			double maxVal, minVal;
-			OpenCvSharp.Point minLoc, maxLoc;
-			Cv2.MinMaxLoc(matprob, out minVal, out maxVal, out minLoc, out maxLoc);
-			label = maxLoc.X;
-			prob = maxVal * 100.0f;
-			*/
-
-			float[] data = new float[matprob.Total() * matprob.Channels()];
-			matprob.GetArray(out data);
-			float[] result = Softmax(data);
-			Console.WriteLine(string.Join(", ", result));
-			if (result.Length >= 2)
-			{
-				if (result[0] > result[1])
-				{
-					label = 0; prob = result[0] * 100;
-				}
-				else
-				{
-					label = 0; prob = result[1] * 100;
-				}
-			} else
-			{
-				label = 0; prob = 0;
-			}
+			Cv2.Merge(rgb, img);
+			Cv2.Resize(img, img, resz);
 		}
 
 		private float[] Softmax(float[] logits)
@@ -175,13 +220,13 @@ namespace MaskDetection
 					t_cap.IsBackground = true; // 프로그램 꺼질 때 쓰레드도 같이 꺼짐
 					m_isRunning = true;
 					t_cap.Start();
-					button_cam.Content = "Camera Close";
+					button_cam.Content = "Close";
 				}
 				else
 				{
 					m_isRunning = false;
 					image_cam.Source = null;
-					button_cam.Content = "Camera Open";
+					button_cam.Content = "Open";
 				}
 			}
 
@@ -193,35 +238,9 @@ namespace MaskDetection
 				if (openFileDialog.ShowDialog() == true)
 				{
 					Mat image = Cv2.ImRead(openFileDialog.FileName);
-					List<OpenCvSharp.Rect> faces;
-					int label = 0;
-					double prob = 0.0f;
-					if (b_facecog == true)
-					{
-						FaceCrop(image, out faces);
-						for (int i = 0; i < faces.Count; i++)
-						{
-							OpenCvSharp.Rect bounds = new OpenCvSharp.Rect(0, 0, image.Cols, image.Rows);
-							Mat roi = new Mat(image, faces[i] & bounds).Clone(); // cropped to fit image
-
-							string str = "";
-							Inference(roi, false, out label, out prob);
-							if (label == 0)
-								Cv2.Rectangle(image, faces[i] & bounds, Scalar.Blue, 3);
-							else
-								Cv2.Rectangle(image, faces[i] & bounds, Scalar.Red, 3);
-						}
-					} 
-					else
-					{
-						Inference(image, false, out label, out prob);
-						if (label == 0)
-							Cv2.Rectangle(image, new OpenCvSharp.Rect(0, 0, image.Width, image.Height), OpenCvSharp.Scalar.Blue, 3);
-						else
-							Cv2.Rectangle(image, new OpenCvSharp.Rect(0, 0, image.Width, image.Height), OpenCvSharp.Scalar.Red, 3);
-
-					}
-					UI_Update(image, label, prob, true);
+					if (!image.Empty()) text_image.Text = "Image: " + openFileDialog.SafeFileName;
+					else text_image.Text = "Image: " + "No Model";
+					Run(image);
 				}
 			}
 			else if (sender.Equals(button_model))
@@ -232,35 +251,15 @@ namespace MaskDetection
 				if (openFileDialog.ShowDialog() == true)
 				{
 					net = OpenCvSharp.Dnn.CvDnn.ReadNetFromOnnx(openFileDialog.FileName);
-					if (!net.Empty())	text_model.Text = "Model: " + openFileDialog.FileName;
+					if (!net.Empty())	text_model.Text = "Model: " + openFileDialog.SafeFileName;
 					else				text_model.Text = "Model: " + "No Model";
 				}
 			}
 
-			else if (sender.Equals(check_facecog))
+			else if (sender.Equals(check_facedet))
 			{
-				if (check_facecog.IsChecked == true)
-				{
-					b_facecog = true;
-					check_fullsize.IsEnabled = b_fullsize = false;
-				}
-				else
-				{
-					b_facecog = false;
-					check_fullsize.IsEnabled = b_fullsize = true;
-				}
-			}
-
-			else if (sender.Equals(check_fullsize))
-			{
-				if (check_fullsize.IsChecked == true)
-				{
-					b_fullsize = true;
-				}
-				else
-				{
-					b_fullsize = false;
-				}
+				if (check_facedet.IsChecked == true)	b_facecog = true;
+				else									b_facecog = false;
 			}
 		}
 
@@ -309,30 +308,20 @@ namespace MaskDetection
 						int width = x2 - x1;
 						int height = y2 - y1;
 
-						// 그냥 face recognition 하면, 얼굴이 너무 빡세게 잡혀서.. 좌우상하 20% 정도씩 늘려줌.
+						// 그냥 face recognition 하면, 얼굴이 너무 빡세게 잡혀서.. 가로세로 10% 정도씩 늘려줌.
 						float face_scale_X = 0.1f;
-						float face_scale_Y = 0f;
-						if (x1 - (width * face_scale_X) < 0)
-							x1 = 0;
-						else
-							x1 = x1 - (int)(width * face_scale_X);
+						float face_scale_Y = 0.1f;
+						if (x1 - (width * face_scale_X) < 0)				x1 = 0;
+						else												x1 = x1 - (int)(width * face_scale_X);
 
-						if (x2 + (width * face_scale_X) > image.Width)
-							x2 = image.Width;
-						else
-							x2 = x2 + (int)(width * face_scale_X);
+						if (x2 + (width * face_scale_X) > image.Width)		x2 = image.Width;
+						else												x2 = x2 + (int)(width * face_scale_X);
 
+						if (y1 - (height * face_scale_Y) < 0)				y1 = 0;
+						else												y1 = y1 - (int)(height * face_scale_Y);
 
-						if (y1 - (height * face_scale_Y) < 0)
-							y1 = 0;
-						else
-							y1 = y1 - (int)(height * face_scale_Y);
-
-						if (y2 + (height * face_scale_Y) > image.Height)
-							y2 = image.Height;
-						else
-							y2 = y2 + (int)(height * face_scale_Y);
-
+						if (y2 + (height * face_scale_Y) > image.Height)	y2 = image.Height;
+						else												y2 = y2 + (int)(height * face_scale_Y);
 
 						OpenCvSharp.Rect item = new OpenCvSharp.Rect(x1, y1, x2 - x1, y2 - y1);
 						Cv2.Rectangle(image,
@@ -366,6 +355,7 @@ namespace MaskDetection
 				}
 			}
 		}
+
 		private void Grab() // 카메라를 연결하고 프레임을 읽고 추론까지 진행함
 		{
 			m_capture.Open(0, VideoCaptureAPIs.DSHOW);
@@ -377,68 +367,7 @@ namespace MaskDetection
 				{
 					m_capture.Read(frame);
 					if (!frame.Empty())
-					{
-						int label = 0;
-						double prob = 0.0f;
-						if (b_facecog == true)
-						{
-							List<OpenCvSharp.Rect> faces;
-							FaceCrop(frame, out faces);
-
-							for (int i = 0; i < faces.Count; i++)
-							{
-								OpenCvSharp.Rect bounds = new OpenCvSharp.Rect(0, 0, frame.Cols, frame.Rows);
-								Mat roi = new Mat(frame, faces[i] & bounds).Clone(); // cropped to fit image
-
-								string str = "";
-								Inference(roi, false, out label, out prob);
-								if (label == 0)
-									Cv2.Rectangle(frame, faces[i] & bounds, Scalar.Blue, 3);
-								else
-									Cv2.Rectangle(frame, faces[i] & bounds, Scalar.Red, 3);
-							}
-						}
-						else
-						{
-							Mat cropped = new Mat();
-							cropped = frame.Clone();
-							int x1, y1, x2, y2;
-							// 이미지 중앙의 400*400을 자르기 위함
-							// 안자르면 얼굴 외 불필요한 배경들도 포함되어 정확도가 떨어짐
-							if (b_fullsize == false)
-							{
-								int crop_width = 400;
-								int crop_height = 400;
-								int center_x = frame.Width / 2, center_y = frame.Height / 2;
-								x1 = center_x - crop_width / 2;
-								y1 = center_y - crop_height / 2;
-								x2 = center_x + crop_width / 2;
-								y2 = center_y + crop_height / 2;
-
-								// 범위가 유효한지 확인 (이미지 크기를 벗어나지 않도록 제한)
-								x1 = Math.Max(x1, 0);
-								y1 = Math.Max(y1, 0);
-								x2 = Math.Min(x2, frame.Width);
-								y2 = Math.Min(y2, frame.Height);
-
-								// 이미지 자르기
-								OpenCvSharp.Rect roi = new OpenCvSharp.Rect(x1, y1, x2 - x1, y2 - y1);
-								cropped = new Mat(frame, roi);
-							}
-							else
-							{
-								x1 = 0; y1 = 0;
-								x2 = cropped.Width; y2 = cropped.Height;
-							}
-							Inference(cropped, false, out label, out prob);
-							if (label == 0)
-								Cv2.Rectangle(frame, new OpenCvSharp.Rect(x1, y1, x2 - x1, y2 - y1), OpenCvSharp.Scalar.Blue, 3);
-							else
-								Cv2.Rectangle(frame, new OpenCvSharp.Rect(x1, y1, x2 - x1, y2 - y1), OpenCvSharp.Scalar.Red, 3);
-
-						}
-						UI_Update(frame, label, prob, true);
-					}
+						Run(frame);
 					Thread.Sleep(10); // prevent for lag
 				}
 				else
@@ -447,50 +376,6 @@ namespace MaskDetection
 			if (m_capture.IsOpened())
 				m_capture.Release();
 		}
-
-		private void UI_Update(Mat image, int label, double prob, bool bThread = false)
-		{
-			string str = "";
-			if (bThread)
-			{
-				// UI
-				image_cam.Dispatcher.Invoke(() =>
-				{
-					image_cam.Source = OpenCvSharp.WpfExtensions.BitmapSourceConverter.ToBitmapSource(image);
-				});
-
-				text_result.Dispatcher.Invoke(() =>
-				{
-					if (label == 0) // Mask
-					{
-						str = ":) Great! You're wearing a mask! (" + prob + "%)\n";
-						text_result.Foreground = new SolidColorBrush(Colors.Blue);
-					}
-					else if (label == 1) // No Mask
-					{
-						str = ":( Put on your mask quickly! (" + prob + "%)\n";
-						text_result.Foreground = new SolidColorBrush(Colors.Red);
-					}
-					text_result.Text = str;
-				});
-			}
-			else
-			{
-				image_cam.Source = OpenCvSharp.WpfExtensions.BitmapSourceConverter.ToBitmapSource(image);
-
-				if (label == 0) // Mask
-				{
-					str = ":) Great! You're wearing a mask! (" + prob + "%)\n";
-					text_result.Foreground = new SolidColorBrush(Colors.Blue);
-				}
-				else if (label == 1) // No Mask
-				{
-					str = ":( Put on your mask quickly! (" + prob + "%)\n";
-					text_result.Foreground = new SolidColorBrush(Colors.Red);
-				}
-				text_result.Text = str;
-			}
-		}
 		private void ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
 		{
 			if (sender.Equals(slider_face_conf))
@@ -498,11 +383,5 @@ namespace MaskDetection
 				face_confidence = (float)slider_face_conf.Value / 100.0f;
 			}
 		}
-	}
-	static class NativeMethods
-	{
-		[DllImport("kernel32.dll", SetLastError = true)]
-		[return: MarshalAs(UnmanagedType.Bool)]
-		public static extern bool AllocConsole();
 	}
 }

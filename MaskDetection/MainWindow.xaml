@@ -5,55 +5,130 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:MaskDetection"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="MainWindow" Height="640" Width="1024">	
 	<Grid>
-		<Grid.RowDefinitions>
-			<RowDefinition Height="0.1*" />
-			<RowDefinition Height="0.9*" />
-		</Grid.RowDefinitions>
-		<Grid Grid.Row="0">
-			<Grid.ColumnDefinitions>
-				<ColumnDefinition Width="0.5*" />
-				<ColumnDefinition Width="0.5*" />
-				<ColumnDefinition Width="0.5*" />
-			</Grid.ColumnDefinitions>
-			<Button x:Name="button_cam" Grid.Column="0" Content="Camera Open" Click="Btn_Click" FontSize="20"/>
-			<Button x:Name="button_image" Grid.Column="1" Content="Image Load" Click="Btn_Click" FontSize="20"/>
-			<Button x:Name="button_model" Grid.Column="2" Content="Model Load" Click="Btn_Click" FontSize="20"/>
-
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="0.6*" />
+			<ColumnDefinition Width="0.4*" />
+		</Grid.ColumnDefinitions>
+		<!-- Left (Picture) --> 
+		<Grid Grid.Column="0">
+			<Image x:Name="image_cam" Stretch="Uniform"/>
 		</Grid>
-		<Grid Grid.Row="1">
-			<Grid.ColumnDefinitions>
-				<ColumnDefinition Width="0.6*" />
-				<ColumnDefinition Width="0.4*" />
-			</Grid.ColumnDefinitions>
-			<Image x:Name="image_cam" Grid.Column="0" Stretch="Uniform"/>
-			<Grid Grid.Column="1">
-				<Grid.RowDefinitions>
-					<RowDefinition Height="0.1*" />
-					<RowDefinition Height="0.1*" />
-					<RowDefinition Height="0.1*" />
-					<RowDefinition Height="0.1*" />
-					<RowDefinition Height="0.1*" />
-					<RowDefinition Height="0.5*" />
-				</Grid.RowDefinitions>
-				<CheckBox x:Name="check_facecog" Grid.Row="0" Content="Auto Face-Cognition" VerticalAlignment="Center" Margin="10" Click="Btn_Click"/>
+		
+		<!-- Right (Menu) -->
+		<Grid Grid.Column="1">
+			<Grid.RowDefinitions>
+				<!-- 1. Input-->
+				<RowDefinition Height="0.3*" />
+				<!-- 2. Model -->
+				<RowDefinition Height="0.2*" />
+				<!-- 3. Face Detection -->
+				<RowDefinition Height="0.2*" />
+				<RowDefinition Height="0.3*" />
+			</Grid.RowDefinitions>
 
-				<Grid Grid.Row="1">
-					<Grid.ColumnDefinitions>
-						<ColumnDefinition Width="0.4*" />
-						<ColumnDefinition Width="0.6*" />
-					</Grid.ColumnDefinitions>
+			
+			<!-- 1. Input -->
+			<GroupBox Grid.Row="0" Header="Input" Margin="5" FontSize="15">
+				<Grid>
+					<Grid.RowDefinitions>
+						<!-- Camera -->
+						<RowDefinition Height="0.5*" />
+						<!-- Image -->
+						<RowDefinition Height="1.0*" />
+					</Grid.RowDefinitions>
+					
+					<!-- Camera -->
+					<Grid Grid.Row="0">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="0.3*" />
+							<ColumnDefinition Width="0.7*" />
+						</Grid.ColumnDefinitions>
+						<TextBlock Grid.Column="0" Text="Camera" VerticalAlignment="Center" FontSize="20" />
+						<Button Grid.Column="1" x:Name="button_cam" Content="Open" Click="Btn_Click" FontSize="20" Margin="10"/>
+					</Grid>
 
-					<TextBlock x:Name="text_face_conf" Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" Text="Face Confidence" Margin="10"/>
-					<Slider x:Name="slider_face_conf" Grid.Column="1" Width="120" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="ValueChanged" />
+					<!-- Image -->
+					<Grid Grid.Row="1">
+						<Grid.RowDefinitions>
+							<RowDefinition Height="0.5*" />
+							<RowDefinition Height="0.5*" />
+						</Grid.RowDefinitions>
+
+						<!-- Load Button... -->
+						<Grid Grid.Row="0">
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="0.3*" />
+								<ColumnDefinition Width="0.7*" />
+							</Grid.ColumnDefinitions>
+							<TextBlock Grid.Column="0" Text="Image" VerticalAlignment="Center" FontSize="20"/>
+							<Button x:Name="button_image" Grid.Column="1" Content="Load" Click="Btn_Click" FontSize="20" Margin="10"/>
+						</Grid>
+						<!-- Path Text... -->
+						<TextBlock x:Name="text_image" Grid.Row="1" TextWrapping="Wrap" VerticalAlignment="Center" Text="No File" FontSize="15"/>
+					</Grid>
 				</Grid>
+			</GroupBox>
 
-				<CheckBox x:Name="check_fullsize" Grid.Row="2" Content="Full Size" VerticalAlignment="Center" Margin="10" Click="Btn_Click"/>
-				<TextBlock x:Name="text_model" Grid.Row="3" TextWrapping="Wrap" VerticalAlignment="Center" Margin="10" Text="" FontSize="10"/>
-				<TextBlock x:Name="text_result" Grid.Row="4" TextWrapping="Wrap" VerticalAlignment="Center" Margin="10" Text="" FontSize="22"/>
 
-			</Grid>
+
+			<!-- 2. Model -->
+			<GroupBox Grid.Row="1" Header="Mask Detection" Margin="5" FontSize="15">
+
+				<Grid>
+					<Grid.RowDefinitions>
+						<RowDefinition Height="0.5*" />
+						<RowDefinition Height="0.5*" />
+					</Grid.RowDefinitions>
+
+					<!-- Load -->
+					<Grid Grid.Row="0">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="0.3*" />
+							<ColumnDefinition Width="0.7*" />
+						</Grid.ColumnDefinitions>
+						<TextBlock Grid.Column="0" Text="File" VerticalAlignment="Center" FontSize="20" />
+						<Button x:Name="button_model" Grid.Column="1" Content="Load" Click="Btn_Click" FontSize="15" Margin="5"/>
+					</Grid>
+					<!-- Path -->
+					<TextBlock x:Name="text_model" Grid.Row="3" TextWrapping="Wrap" VerticalAlignment="Center" Text="No File" FontSize="15"/>
+				</Grid>
+			</GroupBox>
+
+			<!-- 3. Face Detection -->
+			<GroupBox Grid.Row="2" Header="Face Detection" Margin="5" FontSize="15">
+				<Grid>
+					<Grid.RowDefinitions>
+						<RowDefinition Height="0.5*" />
+						<RowDefinition Height="0.5*" />
+					</Grid.RowDefinitions>
+
+					<!-- Enable -->
+					<Grid Grid.Row="0">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="0.3*" />
+							<ColumnDefinition Width="0.7*" />
+						</Grid.ColumnDefinitions>
+						<TextBlock Grid.Column="0" Text="Enable" VerticalAlignment="Center" FontSize="20" />
+						<CheckBox Grid.Column="1" x:Name="check_facedet" Content="Auto Face-Cognition" VerticalAlignment="Center" Margin="10" Click="Btn_Click"/>
+					</Grid>
+
+					<!-- Confidence -->
+					<Grid Grid.Row="1">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="0.3*" />
+							<ColumnDefinition Width="0.7*" />
+						</Grid.ColumnDefinitions>
+						<TextBlock Grid.Column="0" Text="Confidence" VerticalAlignment="Center" FontSize="20" />
+						<Slider x:Name="slider_face_conf" Grid.Column="1" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="ValueChanged" />
+
+					</Grid>
+				</Grid>
+			</GroupBox>
+
 		</Grid>
+
 	</Grid>
+	
 </Window>
