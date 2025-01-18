@@ -1,8 +1,12 @@
 ﻿#define CVDNN_USE
 
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using Microsoft.Win32;
 using OpenCvSharp;
 using OpenCvSharp.Dnn;
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
@@ -20,8 +24,10 @@ using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using static System.Collections.Specialized.BitVector32;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using Window = System.Windows.Window;
+using System.Runtime.InteropServices;
 
 
 namespace MaskDetection
@@ -30,12 +36,12 @@ namespace MaskDetection
 	/// Interaction logic for MainWindow.xaml
 	/// </summary>
 	public partial class MainWindow : Window
-    {
+	{
 		bool JIT_USE = true;
-        VideoCapture m_capture;
+		VideoCapture m_capture;
 		Thread t_cap;
-        Mat m_mat;
-        bool m_isRunning = false;
+		Mat m_mat;
+		bool m_isRunning = false;
 		bool b_Normalized = false;
 
 		bool b_fullsize = false;
@@ -53,11 +59,14 @@ namespace MaskDetection
 		public MainWindow()
 		{
 			InitializeComponent();
+			NativeMethods.AllocConsole();
 			m_capture = new VideoCapture();
 
 			// Model Load (ONNX)
-			var modelPath = "resnet18_Mask_EPOCH300_LR0.001_NormalTrue.onnx";
+			var modelPath = "resnet18_Mask_12K_None_EPOCH200_LR0.0001.onnx";
 			net = OpenCvSharp.Dnn.CvDnn.ReadNetFromOnnx(modelPath);
+			//var modelPath = "resnet18_Mask_12K_EPOCH300_LR0.0001.pt";
+			//net = OpenCvSharp.Dnn.CvDnn.ReadNetFromTorch(modelPath);
 			slider_face_conf.Value = (int)(face_confidence * 100);
 			check_facecog.IsChecked = b_facecog = true;
 			if (check_facecog.IsChecked == true)
@@ -65,34 +74,90 @@ namespace MaskDetection
 				check_fullsize.IsEnabled = b_fullsize = false;
 			}
 		}
-		private void Inference(Mat image, out int label, out double prob)
-		{
-			Mat resizedImage = image.Clone();
 
+
+		private void Inference(Mat image, bool meanstd, out int label, out double prob)
+		{
+			if (image.Empty()) {
+				label = 0;
+				prob = 0;
+				return;
+			}
+			Mat resizedImage = image.Clone();
 			Cv2.Resize(resizedImage, resizedImage, resz);
 			Mat blob = new Mat();
-			blob = CvDnn.BlobFromImage(resizedImage, 1/255.0f, 
-				new OpenCvSharp.Size(224, 224),
-				new OpenCvSharp.Scalar(mean[0] * 255, mean[1] * 255, mean[2] * 255), true, false);
+			Mat[] rgb = resizedImage.Split();
+//			rgb[0].Divide(255.0f); // B
+//			rgb[1].Divide(255.0f); // G
+//			rgb[2].Divide(255.0f); // R
+
+
+			if (meanstd)
+			{
+				rgb[2].Subtract(new Scalar(mean[0]));
+				rgb[1].Subtract(new Scalar(mean[1]));
+				rgb[0].Subtract(new Scalar(mean[2]));
+
+				rgb[2].Divide(std[0]);
+				rgb[1].Divide(std[1]);
+				rgb[0].Divide(std[2]);
+			}
+
+			Cv2.Merge(rgb, resizedImage);
+
+			blob = CvDnn.BlobFromImage(resizedImage, 1/255.0f,
+				new OpenCvSharp.Size(224, 224), swapRB:true, crop:false);
 
 			net.SetInput(blob);
 			string[] outBlobNames = net.GetUnconnectedOutLayersNames();
 			Mat[] outputBlobs = outBlobNames.Select(toMat => new Mat()).ToArray();
 
 			Mat matprob = net.Forward("output");
+
+			/*
+			float[] output;
+			matprob.GetArray<float>(out output);
+			double[] probabilities = Softmax(output);
+			label = Array.IndexOf(probabilities, probabilities.Max());
+			prob = probabilities.Max() * 100.0;
+			*/
+
+
 			double maxVal, minVal;
 			OpenCvSharp.Point minLoc, maxLoc;
 			Cv2.MinMaxLoc(matprob, out minVal, out maxVal, out minLoc, out maxLoc);
 			label = maxLoc.X;
 			prob = maxVal * 100.0f;
+
+			float[] data = new float[matprob.Total() * matprob.Channels()];
+			matprob.GetArray(out data);
+			float[] result = Softmax(data);
+//			Console.WriteLine(string.Join(", ", data));
+			Console.WriteLine(string.Join(", ", result));
+		}
+
+		private float[] Softmax(float[] logits)
+		{
+			// Find max logit for numerical stability
+			float maxLogit = logits.Max();
+
+			// Compute exp(logit - maxLogit)
+			float[] exps = logits.Select(l => (float)Math.Exp(l - maxLogit)).ToArray();
+
+			// Sum of exp
+			float sumExp = exps.Sum();
+
+			// Normalize
+			float[] probabilities = exps.Select(e => e / sumExp).ToArray();
+			return probabilities;
 		}
 
 		private void Btn_Click(object sender, RoutedEventArgs e)
 		{
 			if (sender.Equals(button_cam)) // 카메라 연결/해제 과정
 			{
-                if (!m_isRunning)
-                {
+				if (!m_isRunning)
+				{
 					if (t_cap != null && t_cap.IsAlive)
 					{
 						MessageBox.Show("Camera is closing... Wait..", "Error");
@@ -104,7 +169,8 @@ namespace MaskDetection
 					t_cap.Start();
 					button_cam.Content = "Camera Close";
 				}
-                else {
+				else
+				{
 					m_isRunning = false;
 					image_cam.Source = null;
 					button_cam.Content = "Camera Open";
@@ -120,21 +186,32 @@ namespace MaskDetection
 				{
 					Mat image = Cv2.ImRead(openFileDialog.FileName);
 					List<OpenCvSharp.Rect> faces;
-					FaceCrop(image, out faces);
 					int label = 0;
 					double prob = 0.0f;
-
-					for (int i = 0; i < faces.Count; i++)
+					if (b_facecog == true)
 					{
-						OpenCvSharp.Rect bounds = new OpenCvSharp.Rect(0, 0, image.Cols, image.Rows);
-						Mat roi = new Mat(image, faces[i] & bounds).Clone(); // cropped to fit image
+						FaceCrop(image, out faces);
+						for (int i = 0; i < faces.Count; i++)
+						{
+							OpenCvSharp.Rect bounds = new OpenCvSharp.Rect(0, 0, image.Cols, image.Rows);
+							Mat roi = new Mat(image, faces[i] & bounds).Clone(); // cropped to fit image
 
-						string str = "";
-						Inference(image, out label, out prob);
+							string str = "";
+							Inference(roi, false, out label, out prob);
+							if (label == 0)
+								Cv2.Rectangle(image, faces[i] & bounds, Scalar.Blue, 3);
+							else
+								Cv2.Rectangle(image, faces[i] & bounds, Scalar.Red, 3);
+						}
+					} 
+					else
+					{
+						Inference(image, false, out label, out prob);
 						if (label == 0)
-							Cv2.Rectangle(image, faces[i] & bounds, Scalar.Blue, 3);
+							Cv2.Rectangle(image, new OpenCvSharp.Rect(0, 0, image.Width, image.Height), OpenCvSharp.Scalar.Blue, 3);
 						else
-							Cv2.Rectangle(image, faces[i] & bounds, Scalar.Red, 3);
+							Cv2.Rectangle(image, new OpenCvSharp.Rect(0, 0, image.Width, image.Height), OpenCvSharp.Scalar.Red, 3);
+
 					}
 					UI_Update(image, label, prob, true);
 				}
@@ -158,11 +235,11 @@ namespace MaskDetection
 			{
 				if (check_fullsize.IsChecked == true)
 				{
-					b_fullsize = false;
+					b_fullsize = true;
 				}
 				else
 				{
-					b_fullsize = true;
+					b_fullsize = false;
 				}
 			}
 		}
@@ -185,7 +262,7 @@ namespace MaskDetection
 				string[] outputs = facenet.GetUnconnectedOutLayersNames();
 				Mat outputBlobs = facenet.Forward("detection_out");
 				Mat ch1Blobs = outputBlobs.Reshape(1, 1);
-				
+
 				int rows = outputBlobs.Size(2);
 				int cols = outputBlobs.Size(3);
 				long total = outputBlobs.Total();
@@ -212,8 +289,8 @@ namespace MaskDetection
 						int height = y2 - y1;
 
 						// 그냥 face recognition 하면, 얼굴이 너무 빡세게 잡혀서.. 좌우상하 20% 정도씩 늘려줌.
-						float face_scale_X = 0.2f;
-						float face_scale_Y = 0.1f;
+						float face_scale_X = 0.1f;
+						float face_scale_Y = 0f;
 						if (x1 - (width * face_scale_X) < 0)
 							x1 = 0;
 						else
@@ -236,7 +313,7 @@ namespace MaskDetection
 							y2 = y2 + (int)(height * face_scale_Y);
 
 
-						OpenCvSharp.Rect item = new OpenCvSharp.Rect(x1, y1, x2-x1, y2-y1);
+						OpenCvSharp.Rect item = new OpenCvSharp.Rect(x1, y1, x2 - x1, y2 - y1);
 						Cv2.Rectangle(image,
 							new OpenCvSharp.Point(item.Left, item.Top),
 							new OpenCvSharp.Point(item.Right, item.Bottom),
@@ -267,8 +344,8 @@ namespace MaskDetection
 				}
 			}
 		}
-        private void Grab() // 카메라를 연결하고 프레임을 읽고 추론까지 진행함
-        {
+		private void Grab() // 카메라를 연결하고 프레임을 읽고 추론까지 진행함
+		{
 			m_capture.Open(0, VideoCaptureAPIs.DSHOW);
 
 			Mat frame = new Mat();
@@ -292,24 +369,25 @@ namespace MaskDetection
 								Mat roi = new Mat(frame, faces[i] & bounds).Clone(); // cropped to fit image
 
 								string str = "";
-								Inference(frame, out label, out prob);
+								Inference(roi, false, out label, out prob);
 								if (label == 0)
 									Cv2.Rectangle(frame, faces[i] & bounds, Scalar.Blue, 3);
 								else
 									Cv2.Rectangle(frame, faces[i] & bounds, Scalar.Red, 3);
 							}
-						} else
+						}
+						else
 						{
 							Mat cropped = new Mat();
 							cropped = frame.Clone();
+							int x1, y1, x2, y2;
 							// 이미지 중앙의 400*400을 자르기 위함
 							// 안자르면 얼굴 외 불필요한 배경들도 포함되어 정확도가 떨어짐
-							if (b_fullsize == true) 
+							if (b_fullsize == false)
 							{
 								int crop_width = 400;
 								int crop_height = 400;
 								int center_x = frame.Width / 2, center_y = frame.Height / 2;
-								int x1, y1, x2, y2;
 								x1 = center_x - crop_width / 2;
 								y1 = center_y - crop_height / 2;
 								x2 = center_x + crop_width / 2;
@@ -323,16 +401,25 @@ namespace MaskDetection
 
 								// 이미지 자르기
 								OpenCvSharp.Rect roi = new OpenCvSharp.Rect(x1, y1, x2 - x1, y2 - y1);
-								Cv2.Rectangle(frame, new OpenCvSharp.Rect(x1, y1, x2 - x1, y2 - y1), OpenCvSharp.Scalar.Red, 3);
 								cropped = new Mat(frame, roi);
 							}
+							else
+							{
+								x1 = 0; y1 = 0;
+								x2 = cropped.Width; y2 = cropped.Height;
+							}
+							Inference(cropped, false, out label, out prob);
+							if (label == 0)
+								Cv2.Rectangle(frame, new OpenCvSharp.Rect(x1, y1, x2 - x1, y2 - y1), OpenCvSharp.Scalar.Blue, 3);
+							else
+								Cv2.Rectangle(frame, new OpenCvSharp.Rect(x1, y1, x2 - x1, y2 - y1), OpenCvSharp.Scalar.Red, 3);
 
-							Inference(cropped, out label, out prob);
 						}
 						UI_Update(frame, label, prob, true);
 					}
 					Thread.Sleep(10); // prevent for lag
-				} else
+				}
+				else
 					m_isRunning = false;
 			}
 			if (m_capture.IsOpened())
@@ -386,8 +473,57 @@ namespace MaskDetection
 		{
 			if (sender.Equals(slider_face_conf))
 			{
-				face_confidence = (float) slider_face_conf.Value / 100.0f;
+				face_confidence = (float)slider_face_conf.Value / 100.0f;
 			}
 		}
+
+
+		static Mat PreprocessImage(Mat inputImage, int width, int height)
+		{
+			// Resize to the required dimensions
+			Mat resizedImage = new Mat();
+			Cv2.Resize(inputImage, resizedImage, new OpenCvSharp.Size(width, height));
+
+			// Convert to float32
+			resizedImage.ConvertTo(resizedImage, MatType.CV_32FC3);
+
+			return resizedImage;
+		}
+
+		static Tensor<float> MatToTensor(Mat image, float[] mean, float[] std)
+		{
+			// Split channels (RGB)
+			Mat mat = new Mat();
+			mat = image / 255.0f;
+			Mat[] channels = Cv2.Split(mat);
+			var height = mat.Rows;
+			var width = mat.Cols;
+
+			// Normalize each channel
+			for (int i = 0; i < channels.Length; i++)
+			{
+				channels[i] -= new Scalar(mean[i]);
+				channels[i] /= std[i];
+			}
+
+			// Merge back
+			Cv2.Merge(channels, mat);
+
+			// Convert Mat to a 1D array
+			var newimage = mat.Reshape(1);
+			float[] data = new float[height * width * 3];
+			newimage.GetArray(out data);
+			//image.GetArray(out data);
+
+			// Create Tensor for ONNX input: [1, 3, H, W]
+			return new DenseTensor<float>(data, new[] { 1, 3, height, width });
+		}
+
+	}
+	static class NativeMethods
+	{
+		[DllImport("kernel32.dll", SetLastError = true)]
+		[return: MarshalAs(UnmanagedType.Bool)]
+		public static extern bool AllocConsole();
 	}
 }
