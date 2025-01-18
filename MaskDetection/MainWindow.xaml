@@ -15,9 +15,11 @@
 			<Grid.ColumnDefinitions>
 				<ColumnDefinition Width="0.5*" />
 				<ColumnDefinition Width="0.5*" />
+				<ColumnDefinition Width="0.5*" />
 			</Grid.ColumnDefinitions>
-			<Button x:Name="button_image" Grid.Column="0" Content="Image Load" Click="Btn_Click" FontSize="20"/>
-			<Button x:Name="button_cam" Grid.Column="1" Content="Camera Open" Click="Btn_Click" FontSize="20"/>
+			<Button x:Name="button_cam" Grid.Column="0" Content="Camera Open" Click="Btn_Click" FontSize="20"/>
+			<Button x:Name="button_image" Grid.Column="1" Content="Image Load" Click="Btn_Click" FontSize="20"/>
+			<Button x:Name="button_model" Grid.Column="2" Content="Model Load" Click="Btn_Click" FontSize="20"/>
 
 		</Grid>
 		<Grid Grid.Row="1">
@@ -31,7 +33,9 @@
 					<RowDefinition Height="0.1*" />
 					<RowDefinition Height="0.1*" />
 					<RowDefinition Height="0.1*" />
-					<RowDefinition Height="0.7*" />
+					<RowDefinition Height="0.1*" />
+					<RowDefinition Height="0.1*" />
+					<RowDefinition Height="0.5*" />
 				</Grid.RowDefinitions>
 				<CheckBox x:Name="check_facecog" Grid.Row="0" Content="Auto Face-Cognition" VerticalAlignment="Center" Margin="10" Click="Btn_Click"/>
 
@@ -46,7 +50,9 @@
 				</Grid>
 
 				<CheckBox x:Name="check_fullsize" Grid.Row="2" Content="Full Size" VerticalAlignment="Center" Margin="10" Click="Btn_Click"/>
-				<TextBlock x:Name="text_result" Grid.Row="3" TextWrapping="Wrap" VerticalAlignment="Center" Margin="10" Text="" FontSize="22"/>
+				<TextBlock x:Name="text_model" Grid.Row="3" TextWrapping="Wrap" VerticalAlignment="Center" Margin="10" Text="" FontSize="10"/>
+				<TextBlock x:Name="text_result" Grid.Row="4" TextWrapping="Wrap" VerticalAlignment="Center" Margin="10" Text="" FontSize="22"/>
+
 			</Grid>
 		</Grid>
 	</Grid>

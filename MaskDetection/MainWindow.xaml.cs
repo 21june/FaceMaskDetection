@@ -37,13 +37,9 @@ namespace MaskDetection
 	/// </summary>
 	public partial class MainWindow : Window
 	{
-		bool JIT_USE = true;
 		VideoCapture m_capture;
 		Thread t_cap;
-		Mat m_mat;
 		bool m_isRunning = false;
-		bool b_Normalized = false;
-
 		bool b_fullsize = false;
 		bool b_facecog = true;
 
@@ -62,11 +58,11 @@ namespace MaskDetection
 			NativeMethods.AllocConsole();
 			m_capture = new VideoCapture();
 
-			// Model Load (ONNX)
-			var modelPath = "resnet18_Mask_12K_None_EPOCH200_LR0.0001.onnx";
-			net = OpenCvSharp.Dnn.CvDnn.ReadNetFromOnnx(modelPath);
-			//var modelPath = "resnet18_Mask_12K_EPOCH300_LR0.0001.pt";
-			//net = OpenCvSharp.Dnn.CvDnn.ReadNetFromTorch(modelPath);
+			string mask_model = "resnet18_Mask_12K_None_EPOCH200_LR0.0001.onnx";
+			net = OpenCvSharp.Dnn.CvDnn.ReadNetFromOnnx(mask_model);
+			if (!net.Empty())	text_model.Text = "Model: " + mask_model;
+			else				text_model.Text = "Model: " + "No Model";
+
 			slider_face_conf.Value = (int)(face_confidence * 100);
 			check_facecog.IsChecked = b_facecog = true;
 			if (check_facecog.IsChecked == true)
@@ -78,62 +74,74 @@ namespace MaskDetection
 
 		private void Inference(Mat image, bool meanstd, out int label, out double prob)
 		{
+			if (net.Empty())
+			{
+				MessageBox.Show("No Found Model!");
+				label = 0;
+				prob = 0;
+				return;
+			}
 			if (image.Empty()) {
 				label = 0;
 				prob = 0;
+				MessageBox.Show("No Found Image!");
 				return;
 			}
 			Mat resizedImage = image.Clone();
 			Cv2.Resize(resizedImage, resizedImage, resz);
 			Mat blob = new Mat();
+
 			Mat[] rgb = resizedImage.Split();
-//			rgb[0].Divide(255.0f); // B
-//			rgb[1].Divide(255.0f); // G
-//			rgb[2].Divide(255.0f); // R
-
-
+			rgb[0] = rgb[0].Divide(255.0f); // B
+			rgb[1] = rgb[1].Divide(255.0f); // G
+			rgb[2] = rgb[2].Divide(255.0f); // R
 			if (meanstd)
 			{
-				rgb[2].Subtract(new Scalar(mean[0]));
-				rgb[1].Subtract(new Scalar(mean[1]));
-				rgb[0].Subtract(new Scalar(mean[2]));
+				rgb[2] = rgb[2].Subtract(new Scalar(mean[0])); // B
+				rgb[1] = rgb[1].Subtract(new Scalar(mean[1])); // G
+				rgb[0] = rgb[0].Subtract(new Scalar(mean[2])); // R
 
-				rgb[2].Divide(std[0]);
-				rgb[1].Divide(std[1]);
-				rgb[0].Divide(std[2]);
+				rgb[2] = rgb[2].Divide(std[0]); // B
+				rgb[1] = rgb[1].Divide(std[1]); // G
+				rgb[0] = rgb[0].Divide(std[2]); // R
 			}
-
 			Cv2.Merge(rgb, resizedImage);
 
-			blob = CvDnn.BlobFromImage(resizedImage, 1/255.0f,
+			blob = CvDnn.BlobFromImage(resizedImage, 1.0f,
 				new OpenCvSharp.Size(224, 224), swapRB:true, crop:false);
 
 			net.SetInput(blob);
 			string[] outBlobNames = net.GetUnconnectedOutLayersNames();
 			Mat[] outputBlobs = outBlobNames.Select(toMat => new Mat()).ToArray();
-
 			Mat matprob = net.Forward("output");
 
+			// Test
 			/*
-			float[] output;
-			matprob.GetArray<float>(out output);
-			double[] probabilities = Softmax(output);
-			label = Array.IndexOf(probabilities, probabilities.Max());
-			prob = probabilities.Max() * 100.0;
-			*/
-
-
 			double maxVal, minVal;
 			OpenCvSharp.Point minLoc, maxLoc;
 			Cv2.MinMaxLoc(matprob, out minVal, out maxVal, out minLoc, out maxLoc);
 			label = maxLoc.X;
 			prob = maxVal * 100.0f;
+			*/
 
 			float[] data = new float[matprob.Total() * matprob.Channels()];
 			matprob.GetArray(out data);
 			float[] result = Softmax(data);
-//			Console.WriteLine(string.Join(", ", data));
 			Console.WriteLine(string.Join(", ", result));
+			if (result.Length >= 2)
+			{
+				if (result[0] > result[1])
+				{
+					label = 0; prob = result[0] * 100;
+				}
+				else
+				{
+					label = 0; prob = result[1] * 100;
+				}
+			} else
+			{
+				label = 0; prob = 0;
+			}
 		}
 
 		private float[] Softmax(float[] logits)
@@ -216,6 +224,18 @@ namespace MaskDetection
 					UI_Update(image, label, prob, true);
 				}
 			}
+			else if (sender.Equals(button_model))
+			{
+
+				OpenFileDialog openFileDialog = new OpenFileDialog();
+				openFileDialog.Filter = "ONNX Weight files (*.onnx)|*.onnx|All files (*.*)|*.*";
+				if (openFileDialog.ShowDialog() == true)
+				{
+					net = OpenCvSharp.Dnn.CvDnn.ReadNetFromOnnx(openFileDialog.FileName);
+					if (!net.Empty())	text_model.Text = "Model: " + openFileDialog.FileName;
+					else				text_model.Text = "Model: " + "No Model";
+				}
+			}
 
 			else if (sender.Equals(check_facecog))
 			{
@@ -244,11 +264,12 @@ namespace MaskDetection
 			}
 		}
 
+		// face detection for using ssd (or haarcascade)
 		private void FaceCrop(Mat image, out List<OpenCvSharp.Rect> list)
 		{
 			list = new List<OpenCvSharp.Rect>();
 
-			if (true) // SSD Model : 쓸만함
+			if (true) // SSD Model : Useful
 			{
 				OpenCvSharp.Dnn.Net facenet;
 				var prototext = "deploy.prototxt";
@@ -324,9 +345,10 @@ namespace MaskDetection
 				}
 			}
 
-			if (false) // Cascade Classifier : 실사용하기에 매우 별로임
+			if (false) // Cascade Classifier : Useless
 			{
-				string filenameFaceCascade = "haarcascade_frontalface_alt2.xml";
+				// Download: https://github.com/mitre/biqt-face/tree/master/config/haarcascades
+				string filenameFaceCascade = "haarcascade_frontalface_alt2.xml"; 
 				CascadeClassifier faceCascade = new CascadeClassifier();
 				if (!faceCascade.Load(filenameFaceCascade))
 				{
@@ -476,49 +498,6 @@ namespace MaskDetection
 				face_confidence = (float)slider_face_conf.Value / 100.0f;
 			}
 		}
-
-
-		static Mat PreprocessImage(Mat inputImage, int width, int height)
-		{
-			// Resize to the required dimensions
-			Mat resizedImage = new Mat();
-			Cv2.Resize(inputImage, resizedImage, new OpenCvSharp.Size(width, height));
-
-			// Convert to float32
-			resizedImage.ConvertTo(resizedImage, MatType.CV_32FC3);
-
-			return resizedImage;
-		}
-
-		static Tensor<float> MatToTensor(Mat image, float[] mean, float[] std)
-		{
-			// Split channels (RGB)
-			Mat mat = new Mat();
-			mat = image / 255.0f;
-			Mat[] channels = Cv2.Split(mat);
-			var height = mat.Rows;
-			var width = mat.Cols;
-
-			// Normalize each channel
-			for (int i = 0; i < channels.Length; i++)
-			{
-				channels[i] -= new Scalar(mean[i]);
-				channels[i] /= std[i];
-			}
-
-			// Merge back
-			Cv2.Merge(channels, mat);
-
-			// Convert Mat to a 1D array
-			var newimage = mat.Reshape(1);
-			float[] data = new float[height * width * 3];
-			newimage.GetArray(out data);
-			//image.GetArray(out data);
-
-			// Create Tensor for ONNX input: [1, 3, H, W]
-			return new DenseTensor<float>(data, new[] { 1, 3, height, width });
-		}
-
 	}
 	static class NativeMethods
 	{
