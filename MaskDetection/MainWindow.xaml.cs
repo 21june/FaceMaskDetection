@@ -292,7 +292,7 @@ namespace MaskDetection
 		}
 
 		// 버튼 클릭 이벤트
-		private void Btn_Click(object sender, RoutedEventArgs e)
+		private void ClickEvent(object sender, RoutedEventArgs e)
 		{
 			if (sender.Equals(button_cam)) // 카메라 연결/해제 버튼
 			{
@@ -350,7 +350,7 @@ namespace MaskDetection
 		}
 
 		// Slider 값 변경 이벤트
-		private void ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+		private void SliderEvent(object sender, RoutedPropertyChangedEventArgs<double> e)
 		{
 			if (sender.Equals(slider_face_conf))
 			{

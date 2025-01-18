@@ -46,7 +46,7 @@
 							<ColumnDefinition Width="0.7*" />
 						</Grid.ColumnDefinitions>
 						<TextBlock Grid.Column="0" Text="Camera" VerticalAlignment="Center" FontSize="20" />
-						<Button Grid.Column="1" x:Name="button_cam" Content="Open" Click="Btn_Click" FontSize="20" Margin="10"/>
+						<Button Grid.Column="1" x:Name="button_cam" Content="Open" Click="ClickEvent" FontSize="20" Margin="10"/>
 					</Grid>
 
 					<!-- Image -->
@@ -63,7 +63,7 @@
 								<ColumnDefinition Width="0.7*" />
 							</Grid.ColumnDefinitions>
 							<TextBlock Grid.Column="0" Text="Image" VerticalAlignment="Center" FontSize="20"/>
-							<Button x:Name="button_image" Grid.Column="1" Content="Load" Click="Btn_Click" FontSize="20" Margin="10"/>
+							<Button x:Name="button_image" Grid.Column="1" Content="Load" Click="ClickEvent" FontSize="20" Margin="10"/>
 						</Grid>
 						<!-- Path Text... -->
 						<TextBlock x:Name="text_image" Grid.Row="1" TextWrapping="Wrap" VerticalAlignment="Center" Text="No File" FontSize="15"/>
@@ -89,7 +89,7 @@
 							<ColumnDefinition Width="0.7*" />
 						</Grid.ColumnDefinitions>
 						<TextBlock Grid.Column="0" Text="File" VerticalAlignment="Center" FontSize="20" />
-						<Button x:Name="button_model" Grid.Column="1" Content="Load" Click="Btn_Click" FontSize="15" Margin="5"/>
+						<Button x:Name="button_model" Grid.Column="1" Content="Load" Click="ClickEvent" FontSize="15" Margin="5"/>
 					</Grid>
 					<!-- Path -->
 					<TextBlock x:Name="text_model" Grid.Row="3" TextWrapping="Wrap" VerticalAlignment="Center" Text="No File" FontSize="15"/>
@@ -111,7 +111,7 @@
 							<ColumnDefinition Width="0.7*" />
 						</Grid.ColumnDefinitions>
 						<TextBlock Grid.Column="0" Text="Enable" VerticalAlignment="Center" FontSize="20" />
-						<CheckBox Grid.Column="1" x:Name="check_facedet" Content="Auto Face-Cognition" VerticalAlignment="Center" Margin="10" Click="Btn_Click"/>
+						<CheckBox Grid.Column="1" x:Name="check_facedet" Content="Auto Face-Cognition" VerticalAlignment="Center" Margin="10" Click="ClickEvent"/>
 					</Grid>
 
 					<!-- Confidence -->
@@ -121,7 +121,7 @@
 							<ColumnDefinition Width="0.7*" />
 						</Grid.ColumnDefinitions>
 						<TextBlock Grid.Column="0" Text="Confidence" VerticalAlignment="Center" FontSize="20" />
-						<Slider x:Name="slider_face_conf" Grid.Column="1" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="ValueChanged" />
+						<Slider x:Name="slider_face_conf" Grid.Column="1" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="SliderEvent" />
 
 					</Grid>
 				</Grid>
